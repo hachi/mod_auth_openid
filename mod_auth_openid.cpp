@@ -64,6 +64,7 @@ static void *create_modauthopenid_config(apr_pool_t *p, char *s) {
   newcfg->server_name = NULL;
   newcfg->auth_program = NULL;
   newcfg->use_auth_program = false;
+  newcfg->login_page = NULL;
   return (void *) newcfg;
 }
 
