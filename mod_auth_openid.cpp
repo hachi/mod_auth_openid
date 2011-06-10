@@ -38,6 +38,7 @@ typedef struct {
   char *trust_root;
   const char *cookie_name;
   char *login_page;
+  char *sso_url;
   bool use_cookie;
   apr_array_header_t *trusted;
   apr_array_header_t *distrusted;
@@ -65,6 +66,7 @@ static void *create_modauthopenid_config(apr_pool_t *p, char *s) {
   newcfg->auth_program = NULL;
   newcfg->use_auth_program = false;
   newcfg->login_page = NULL;
+  newcfg->sso_url = NULL;
   return (void *) newcfg;
 }
 
@@ -89,6 +91,12 @@ static const char *set_modauthopenid_trust_root(cmd_parms *parms, void *mconfig,
 static const char *set_modauthopenid_login_page(cmd_parms *parms, void *mconfig, const char *arg) {
   modauthopenid_config *s_cfg = (modauthopenid_config *) mconfig;
   s_cfg->login_page = (char *) arg;
+  return NULL;
+}
+
+static const char *set_modauthopenid_sso_url(cmd_parms *parms, void *mconfig, const char *arg) {
+  modauthopenid_config *s_cfg = (modauthopenid_config *) mconfig;
+  s_cfg->sso_url = (char *) arg;
   return NULL;
 }
 
@@ -142,6 +150,8 @@ static const command_rec mod_authopenid_cmds[] = {
 		"AuthOpenIDDBLocation <string>"),
   AP_INIT_TAKE1("AuthOpenIDLoginPage", (CMD_HAND_TYPE) set_modauthopenid_login_page, NULL, OR_AUTHCFG,
 		"AuthOpenIDLoginPage <url string>"),
+  AP_INIT_TAKE1("AuthOpenIDSSOURL", (CMD_HAND_TYPE) set_modauthopenid_sso_url, NULL, OR_AUTHCFG,
+		"AuthOpenIDSSOURL <url string>"),
   AP_INIT_TAKE1("AuthOpenIDTrustRoot", (CMD_HAND_TYPE) set_modauthopenid_trust_root, NULL, OR_AUTHCFG,
 		"AuthOpenIDTrustRoot <trust root to use>"),
   AP_INIT_TAKE1("AuthOpenIDCookieName", (CMD_HAND_TYPE) set_modauthopenid_cookie_name, NULL, OR_AUTHCFG,
@@ -441,6 +451,10 @@ static int mod_authopenid_method_handler(request_rec *r) {
     modauthopenid::base_dir(return_to, trust_root);
   else
     trust_root = std::string(s_cfg->trust_root);
+
+  // if we're in SSO mode, force the openid_identifier to a specific value
+  if(s_cfg->sso_url && !params.has_param("openid.assoc_handle"))
+    params.set_field("openid_identifier", s_cfg->sso_url);
 
   // if user is posting id (only openid_identifier will contain a value)
   if(params.has_param("openid_identifier") && !params.has_param("openid.assoc_handle")) {
