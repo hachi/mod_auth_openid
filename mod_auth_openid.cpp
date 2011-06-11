@@ -39,6 +39,7 @@ typedef struct {
   const char *cookie_name;
   char *login_page;
   char *sso_url;
+  char *sso_user_base;
   bool use_cookie;
   apr_array_header_t *trusted;
   apr_array_header_t *distrusted;
@@ -67,6 +68,7 @@ static void *create_modauthopenid_config(apr_pool_t *p, char *s) {
   newcfg->use_auth_program = false;
   newcfg->login_page = NULL;
   newcfg->sso_url = NULL;
+  newcfg->sso_user_base = NULL;
   return (void *) newcfg;
 }
 
@@ -97,6 +99,12 @@ static const char *set_modauthopenid_login_page(cmd_parms *parms, void *mconfig,
 static const char *set_modauthopenid_sso_url(cmd_parms *parms, void *mconfig, const char *arg) {
   modauthopenid_config *s_cfg = (modauthopenid_config *) mconfig;
   s_cfg->sso_url = (char *) arg;
+  return NULL;
+}
+
+static const char *set_modauthopenid_sso_user_base(cmd_parms *parms, void *mconfig, const char *arg) {
+  modauthopenid_config *s_cfg = (modauthopenid_config *) mconfig;
+  s_cfg->sso_user_base = (char *) arg;
   return NULL;
 }
 
@@ -152,6 +160,8 @@ static const command_rec mod_authopenid_cmds[] = {
 		"AuthOpenIDLoginPage <url string>"),
   AP_INIT_TAKE1("AuthOpenIDSSOURL", (CMD_HAND_TYPE) set_modauthopenid_sso_url, NULL, OR_AUTHCFG,
 		"AuthOpenIDSSOURL <url string>"),
+  AP_INIT_TAKE1("AuthOpenIDSSOUserBase", (CMD_HAND_TYPE) set_modauthopenid_sso_user_base, NULL, OR_AUTHCFG,
+		"AuthOpenIDSSOUserBase <url string>"),
   AP_INIT_TAKE1("AuthOpenIDTrustRoot", (CMD_HAND_TYPE) set_modauthopenid_trust_root, NULL, OR_AUTHCFG,
 		"AuthOpenIDTrustRoot <trust root to use>"),
   AP_INIT_TAKE1("AuthOpenIDCookieName", (CMD_HAND_TYPE) set_modauthopenid_cookie_name, NULL, OR_AUTHCFG,
@@ -406,7 +416,20 @@ static int validate_authentication_session(request_rec *r, modauthopenid_config 
 
     // Make sure that identity is set to the original one given by the user (in case of delegation
     // this will be different than openid_identifier GET param
-    std::string identity = consumer.get_claimed_id();
+    std::string identity;
+    if (s_cfg->sso_url && s_cfg->sso_user_base) {
+	std::string c_identity = consumer.get_claimed_id();
+	if (strstr(c_identity.c_str(), s_cfg->sso_user_base) == c_identity.c_str()) {
+		identity = strdup(c_identity.c_str() + strlen(s_cfg->sso_user_base));
+	} else {
+		std::string error = "SSOUserBase didn't match in the identity";
+		APERR(r, "Error in authentication: %s", error.c_str());	
+		consumer.close();
+		return show_input(r, s_cfg, modauthopenid::unauthorized);       
+	}
+    } else
+    	identity = consumer.get_claimed_id();
+
     consumer.kill_session();
     consumer.close();
 
